@@ -262,10 +262,17 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
+parameter_types! {
+    pub const ReservedAmount: Balance = 1000;
+}
+
 /// Configure the pallet-template in pallets/template.
 impl pallet_template::Config for Runtime {
 	type Event = Event;
+    type Token = Balances;
+    type ReservedAmount = ReservedAmount;
 }
+
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
