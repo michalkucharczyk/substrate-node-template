@@ -16,14 +16,25 @@ mod benchmarking;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::pallet_prelude::*;
+	use frame_support::{pallet_prelude::*, traits::{ReservableCurrency, Currency}};
 	use frame_system::pallet_prelude::*;
+
+	type BalanceOf<T> =
+		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+	type BalanceOf2<T> =
+		<<T as Config>::Currency2 as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+		type Currency: ReservableCurrency<Self::AccountId>;
+
+		type Currency2: ReservableCurrency<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
@@ -56,6 +67,21 @@ pub mod pallet {
 		/// Errors should have helpful documentation associated with them.
 		StorageOverflow,
 	}
+
+	#[derive(Encode, Decode, TypeInfo, DebugNoBound, CloneNoBound, EqNoBound, PartialEqNoBound)]
+	#[scale_info(skip_type_params(T))]
+	pub struct DoubleAmount<T: crate::Config> {
+		balance1: BalanceOf<T>,
+		balance2: BalanceOf2<T>,
+	}
+
+
+
+	// #[derive(Encode, Decode, TypeInfo, Debug, Clone, Eq, PartialEq)]
+	// pub struct DoubleAmount<Balance1, Balance2> {
+	// 	balance1: Balance1,
+	// 	balance2: Balance2,
+	// }
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
 	// These functions materialize as "extrinsics", which are often compared to transactions.
@@ -98,5 +124,22 @@ pub mod pallet {
 				},
 			}
 		}
+
+		#[pallet::weight(0)]
+		pub fn set_balance(origin: OriginFor<T>, who: T::AccountId, amount1: BalanceOf<T>, amount2: BalanceOf2<T>) -> DispatchResult {
+			let _ = T::Currency::make_free_balance_be(&who, amount1);
+			let _ = T::Currency2::make_free_balance_be(&who, amount2);
+			Ok(())
+		}
+
+		#[pallet::weight(0)]
+		pub fn set_balance_struct(origin: OriginFor<T>, who: T::AccountId, amount: DoubleAmount<T>) -> DispatchResult {
+			let amount1 = amount.balance1;
+			let amount2 = amount.balance2;
+			let _ = T::Currency::make_free_balance_be(&who, amount1);
+			let _ = T::Currency2::make_free_balance_be(&who, amount2);
+			Ok(())
+		}
 	}
 }
+
