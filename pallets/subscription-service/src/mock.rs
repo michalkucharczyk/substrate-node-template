@@ -4,7 +4,7 @@ use frame_system as system;
 use sp_core::H256;
 use sp_runtime::{
 	testing::Header,
-	traits::{BlakeTwo256, IdentityLookup, ConstU32},
+	traits::{BlakeTwo256, ConstU32, IdentityLookup},
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -17,9 +17,9 @@ frame_support::construct_runtime!(
 		NodeBlock = Block,
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
-		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-		ServiceSubscriptionModule: pallet_service_subscription::{Pallet, Call, Storage, Event<T>},
-        Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+		System: frame_system,
+		ServiceSubscriptionModule: pallet_service_subscription,
+		Balances: pallet_balances,
 	}
 );
 
@@ -42,37 +42,36 @@ impl system::Config for Test {
 	type Version = ();
 	type PalletInfo = PalletInfo;
 	// type AccountData = ();
-    type AccountData = pallet_balances::AccountData<u64>;
+	type AccountData = pallet_balances::AccountData<u64>;
 	type OnNewAccount = ();
 	type OnKilledAccount = ();
 	type SystemWeightInfo = ();
 	type SS58Prefix = ConstU16<42>;
 	type OnSetCode = ();
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
-
 }
 
 impl pallet_balances::Config for Test {
-    type MaxLocks = (); 
-    type MaxReserves = (); 
-    type ReserveIdentifier = [u8; 8]; 
-    type Balance = u64;
-    type Event = Event;
-    type DustRemoval = (); 
-    type ExistentialDeposit = ConstU64<1>;
-    type AccountStore = System;
-    type WeightInfo = (); 
+	type MaxLocks = ();
+	type MaxReserves = ();
+	type ReserveIdentifier = [u8; 8];
+	type Balance = u64;
+	type Event = Event;
+	type DustRemoval = ();
+	type ExistentialDeposit = ConstU64<1>;
+	type AccountStore = System;
+	type WeightInfo = ();
 }
-
 
 impl pallet_service_subscription::Config for Test {
 	type Event = Event;
-    type ServiceProviderIdentity = u32;
-    type ServiceIdentity = u32;
-    type SubscriptionPeriod = u64;
-    type MaxServicesPerProvider = ConstU32<2>;
-    type Token = Balances;
-    type SubscriptionFee = u32;
+	type ServiceProviderIdentity = u32;
+	type ServiceIdentity = u32;
+	type SubscriptionPeriod = u64;
+	type MaxServicesPerProvider = ConstU16<2>;
+	type MaxUserSubscriptions = ConstU32<4>;
+	type Token = Balances;
+	type SubscriptionFee = u32;
 }
 
 // Build genesis storage according to the mock runtime.
