@@ -3,10 +3,7 @@
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
 
-use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::traits::Currency;
-use frame_support::RuntimeDebug;
-use scale_info::TypeInfo;
 
 #[cfg(test)]
 mod mock;
@@ -16,14 +13,12 @@ mod tests;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::dispatch::Codec;
 	use frame_support::pallet_prelude::*;
 	use frame_support::traits::Currency;
 	use frame_support::traits::ExistenceRequirement;
 	use frame_support::traits::ReservableCurrency;
 	use frame_support::BoundedVec;
 	use frame_system::pallet_prelude::*;
-	use sp_std::vec::Vec;
 
 	type BalanceOf<T> =
 		<<T as Config>::Token as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -49,7 +44,7 @@ pub mod pallet {
 	}
 
 	#[pallet::event]
-	#[pallet::generate_deposit(pub(super) fn deposit_event)]
+	// #[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		//todo
 		SampleEvent,
@@ -65,7 +60,7 @@ pub mod pallet {
 		UserAlreadySubscribed,
 		CannotSubscribeUserMaxSubscriptions,
 		UserNotSubscribed,
-		InsufficientBalance, //todo: cleanup
+		InsufficientBalance, //todo: cleanup, use Balance::InsufficientBalance?
 	}
 
 	#[pallet::pallet]
@@ -152,7 +147,8 @@ pub mod pallet {
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		/// Execute the scheduled calls
 		fn on_initialize(now: T::BlockNumber) -> Weight {
-			let mut total_weight: Weight = Weight::default();
+            //todo: compute total_weight
+			let total_weight: Weight = Weight::default();
 			CurrentBlockNumber::<T>::set(now);
 			Self::renew_subscriptions(now);
 			total_weight
@@ -163,9 +159,10 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(1_000)]
 		pub fn register_service_provider(
-			origin: OriginFor<T>,
+			_origin: OriginFor<T>,
 			service_provider: T::ServiceProviderIdentity,
 		) -> DispatchResult {
+            //todo: take deposit
 			ensure!(
 				!ServiceProviders::<T>::contains_key(&service_provider),
 				Error::<T>::ServiceProviderAlreadyRegistered
@@ -178,13 +175,14 @@ pub mod pallet {
 		//todo: put struct ServiceInfo in function call
 		#[pallet::weight(1_000)]
 		pub fn register_service(
-			origin: OriginFor<T>,
+			_origin: OriginFor<T>,
 			service_provider: T::ServiceProviderIdentity,
 			service: T::ServiceIdentity,
 			period: T::SubscriptionPeriod,
 			receiver_account: T::AccountId,
 			fee: T::SubscriptionFee,
 		) -> DispatchResult {
+            //todo: take deposit
 			Self::is_service_provider_registered(&service_provider)?;
 
 			// println!("b:{:?}", Services2::<T>::get(&service_provider, &service));
@@ -293,7 +291,7 @@ pub mod pallet {
 			// println!("user_renewal_blocks: {:?}", user_renewal_blocks);
 			// println!("subs:{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
 
-			let bucket = user_renewal_blocks.iter().enumerate().find(|(i, b)| {
+			let bucket = user_renewal_blocks.iter().find(|b| {
 				Subscriptions::<T>::get(b, &who)
 					.iter()
 					.find(|sub| sub.service == service && sub.service_provider == service_provider)
@@ -304,19 +302,17 @@ pub mod pallet {
 
 			let bucket = bucket.expect("Already ensured that is_some. qed");
 
-			Subscriptions::<T>::try_mutate(bucket.1, &who, |subs| -> DispatchResult {
+			Subscriptions::<T>::try_mutate(bucket, &who, |subs| -> DispatchResult {
 				subs.retain(|s| !(s.service_provider == service_provider && s.service == service));
 				Ok(())
 			})?;
 
-			if let subs = Subscriptions::<T>::get(bucket.1, &who) {
-				if subs.is_empty() {
-					Subscriptions::<T>::remove(bucket.1, &who);
-				}
-			}
+            if Subscriptions::<T>::get(bucket, &who).is_empty() {
+                Subscriptions::<T>::remove(bucket, &who);
+            }
 
 			UserSubscriptions::<T>::try_mutate(&who, |b| -> DispatchResult {
-				b.retain(|i| i != bucket.1);
+				b.retain(|i| i != bucket);
 				Ok(())
 			})?;
 
@@ -332,11 +328,26 @@ pub mod pallet {
 use frame_support::ensure;
 use frame_support::pallet_prelude::DispatchResult;
 use frame_support::traits::ExistenceRequirement;
-use frame_support::BoundedVec;
 use frame_support::traits::Get;
 
 //question: is this good practice?
 impl<T: Config> Pallet<T> {
+
+    #[cfg(test)]
+    fn get_renewal_block_for_user(
+        who: T::AccountId,
+		service_provider: T::ServiceProviderIdentity,
+		service: T::ServiceIdentity,
+        ) -> Option<T::BlockNumber> {
+
+        UserSubscriptions::<T>::get(&who).iter().find(|b| {
+            Subscriptions::<T>::get(b, &who)
+                .iter()
+                .find(|sub| sub.service == service && sub.service_provider == service_provider)
+                .is_some()
+        }).map(|b| *b)
+    }
+
 	fn is_service_provider_registered(
 		service_provider: &T::ServiceProviderIdentity,
 	) -> DispatchResult {
@@ -359,17 +370,17 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-	fn renew_subscriptions(block_number: T::BlockNumber) -> DispatchResult {
+	fn renew_subscriptions(block_number: T::BlockNumber) {
         //todo: we shall also checks the buckets which are less then current block_number (this should not happen theoretically).
         //todo: error handling shall be reviewed.
-		let v = Subscriptions::<T>::iter_prefix(block_number).map(|(who,subscription_info)| who).collect::<Vec<_>>();
+		let v = Subscriptions::<T>::iter_prefix(block_number).map(|(who,_)| who).collect::<Vec<_>>();
 
         v.iter().for_each(|who| {
             //remove all subscriptions for user for given block_number
             let subscription_infos = Subscriptions::<T>::take(block_number, who);
 
             //remove block-number from user's blocks
-			UserSubscriptions::<T>::try_mutate(&who, |b| -> Result<(),()> {
+			let _ = UserSubscriptions::<T>::try_mutate(&who, |b| -> Result<(),()> {
 				b.retain(|i| *i != block_number);
 				Ok(())
 			});
@@ -385,15 +396,15 @@ impl<T: Config> Pallet<T> {
 
                     //schedule renewal for the end of next period:
                     let next_renewal = block_number + service_info.period.into();
-                    Subscriptions::<T>::try_mutate(&next_renewal, &who, |subs| -> Result<(),()> {
-                        subs.try_push(info.clone());
+                    let _ = Subscriptions::<T>::try_mutate(&next_renewal, &who, |subs| -> Result<(),()> {
+                        subs.try_push(info.clone()).expect("there is space for one item. qed");
                         Ok(())
                     });
 
                     //push 'now+service_info.period' to user's blocks
-                    UserSubscriptions::<T>::try_mutate(&who, |user_renewal_blocks| -> Result<(),()> {
+                    let _ = UserSubscriptions::<T>::try_mutate(&who, |user_renewal_blocks| -> Result<(),()> {
                         if !user_renewal_blocks.iter().any(|b| *b == next_renewal) {
-                            user_renewal_blocks.try_push(next_renewal);
+                            user_renewal_blocks.try_push(next_renewal).expect("there is space for one item. qed");
                         }
                         Ok(())
                     });
@@ -410,9 +421,7 @@ impl<T: Config> Pallet<T> {
             });
         });
 
-        println!("subs :{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
-		println!("block:{:?}", UserSubscriptions::<T>::iter().collect::<Vec<_>>());
-
-		Ok(())
+        // println!("subs :{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
+		// println!("block:{:?}", UserSubscriptions::<T>::iter().collect::<Vec<_>>());
 	}
 }

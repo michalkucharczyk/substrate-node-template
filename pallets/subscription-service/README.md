@@ -1,4 +1,30 @@
-Subscription service.
+Subscription service
+++++++++++++++++++++
+
+How to use
+~~~~~~~~~~
+The pallete was not tested in real runtime configuration on the substrate node.
+
+However it has basic test coverage, to run tests issue:
+cargo test -p pallet-subscription-service 
+
+
+Next steps
+~~~~~~~~~~
+Provided implementation should be considered as proof-of-concept / skeleton
+for further development. There is still a lot of to improve:
+ - implement meaningful events
+ - Add RPC getters to check if user is subscribed to given service
+ - Assets pallet shall be integrated.
+ - Service provider could be an identity,
+ - Registering service_provider/services requires deposit (!).
+ - Scheduler pallet may fit, this shall be evaluated.
+ - Implement fee-free subscribe/cancel (be defensive, not to allow bad transactions to be free).
+ - Add service removal (but keep all users till the end of the latest subscription period, requires removed marker in ServiceInfo)
+ - consider adding transactional layer, in renew_subscriptions function, error handling requires additional attention
+ - renew_subscriptions shall check if there are buckets with bn < now. If yes, it should be resolved.
+ - renew_subscriptions should terminate if cumulative weight is too high? (size of data stored?)
+
 
 Purpose
 ~~~~~~~
@@ -48,24 +74,10 @@ Assumption:
 
 Pallet's API
 ~~~~~~~~~~~~
-
 - registerServiceProvider(service_provider)
 - createSubscription(service_provider, what, payment_receiver, period); // for service provider
 - subscribe(service_provider, what); //user
 - cancel(service_provider, what); //user
-
-Next steps
-~~~~~~~~~~
- - Add RPC getters to check if user is subscribed to given service
- - Assets pallet shall be integrated.
- - Service provider could be an identity.
- - Registering service_provider/services requires deposit.
- - Scheduler pallet may fit, this shall be evaluated.
- - Implement fee-free subscribe/cancel (be defensive, not to allow bad transactions to be free).
- - Add service removal (but keep all users till the end of the latest subscription period, requires removed marker in ServiceInfo)
- - consider adding transactional layer, in renew_subscriptions function, error handling requires additional attention
- - renew_subscriptions shall check if there are buckets with bn < now. If yes, it should be resolved.
- - renew_subscriptions should terminate if cumulative weight is too high? (size of data stored?)
 
 
 Database storage proposal
@@ -126,5 +138,4 @@ cache would be as follows:
   a03: [120,130]
 
 This allows fast access to user's active subscriptions.
-
 

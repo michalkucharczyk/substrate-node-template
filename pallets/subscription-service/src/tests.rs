@@ -3,7 +3,6 @@ use crate::{mock::*, Error};
 use frame_support::traits::OnInitialize;
 use frame_support::{assert_noop, assert_ok, bounded_vec, BoundedVec};
 use frame_system as system;
-use sp_runtime::traits::{BlakeTwo256, ConstU32, IdentityLookup};
 use frame_support::traits::tokens::currency::Currency;
 
 type UserSubscriptionsVec = BoundedVec<
@@ -158,9 +157,9 @@ fn user_can_subscribe() {
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(now);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee));
 
         assert_ok!(
             ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
@@ -429,9 +428,38 @@ fn subscribe_with_insufficient_funds_fails() {
 
 		assert_noop!(
             ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
-            // pallet_balances::Error::<Test,_>::InsufficientBalance
             Error::<Test>::InsufficientBalance
         );
+	});
+}
+
+#[test]
+fn renewal_test_out_of_funds() {
+	new_test_ext().execute_with(|| {
+
+        let service_provider = 42;
+        let service = 1;
+        let fee = 99;
+        let period = 10;
+        let receiver_account = 1;
+
+        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,3*99);
+
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service));
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service), Some(20));
+
+        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10+10);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service), Some(30));
+
+        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(20+10);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service), Some(40));
+
+        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(30+10);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service), None);
 	});
 }
 
@@ -468,23 +496,32 @@ fn renewal_test_00() {
 		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service+1));
 		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(3), service_provider+1, service+1));
 
-        println!("---");
         ServiceSubscriptionModule::renew_subscriptions(10+10);
-        println!("---");
-        ServiceSubscriptionModule::renew_subscriptions(10+11);
-        println!("---");
-        ServiceSubscriptionModule::renew_subscriptions(10+12);
-        println!("---");
-        ServiceSubscriptionModule::renew_subscriptions(10+13);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service), Some(30));
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(3, service_provider, service), Some(30));
 
-        println!("---");
+        ServiceSubscriptionModule::renew_subscriptions(10+11);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service+1), Some(31));
+
+        ServiceSubscriptionModule::renew_subscriptions(10+12);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider+1, service), Some(32));
+
+        ServiceSubscriptionModule::renew_subscriptions(10+13);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider+1, service+1), Some(33));
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(3, service_provider+1, service+1), Some(33));
+
         ServiceSubscriptionModule::renew_subscriptions(20+10);
-        println!("---");
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service), Some(40));
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(3, service_provider, service), Some(40));
+
         ServiceSubscriptionModule::renew_subscriptions(20+11);
-        println!("---");
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider, service+1), Some(41));
+
         ServiceSubscriptionModule::renew_subscriptions(20+12);
-        println!("---");
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(2, service_provider+1, service), Some(42));
+
         ServiceSubscriptionModule::renew_subscriptions(20+13);
+        assert_eq!(ServiceSubscriptionModule::get_renewal_block_for_user(3, service_provider+1, service+1), None);
 	});
 }
 
