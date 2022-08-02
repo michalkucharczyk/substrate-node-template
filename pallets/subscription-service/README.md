@@ -54,6 +54,16 @@ Pallet's API
 - subscribe(service_provider, what); //user
 - cancel(service_provider, what); //user
 
+Next steps
+~~~~~~~~~~
+ - Add RPC getters to check if user is subscribed to given service
+ - Service provider could be an identity.
+ - Assets pallet shall be integrated.
+ - Registering service_provider/services requires deposit.
+ - Scheduler pallet may fit, this shall be evaluated
+ - Implement fee-free subscribe/canel (be defensive, not to allow bad transactions to be free)
+
+
 Database storage proposal
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

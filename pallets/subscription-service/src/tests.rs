@@ -1,13 +1,15 @@
 use crate as pallet_service_subscription;
 use crate::{mock::*, Error};
-use frame_support::{assert_noop, assert_ok, bounded_vec, BoundedVec};
 use frame_support::traits::OnInitialize;
+use frame_support::{assert_noop, assert_ok, bounded_vec, BoundedVec};
 use frame_system as system;
-use sp_runtime::{
-	traits::{BlakeTwo256, ConstU32, IdentityLookup},
-};
+use sp_runtime::traits::{BlakeTwo256, ConstU32, IdentityLookup};
+use frame_support::traits::tokens::currency::Currency;
 
-type UserSubscriptionsVec = BoundedVec<<Test as system::Config>::AccountId, <Test as pallet_service_subscription::Config>::MaxUserSubscriptions> ;
+type UserSubscriptionsVec = BoundedVec<
+	<Test as system::Config>::AccountId,
+	<Test as pallet_service_subscription::Config>::MaxUserSubscriptions,
+>;
 
 #[test]
 fn cannot_register_service_provider_twice() {
@@ -46,23 +48,42 @@ fn cannot_register_single_service_twice() {
 	});
 }
 
-
 #[test]
 fn register_two_services() {
 	new_test_ext().execute_with(|| {
-        let service_provider = 42;
-        let service = 1;
-        let fee = 99;
-        let period = 10;
-        let receiver_account = 1;
+		let service_provider = 42;
+		let service = 1;
+		let fee = 99;
+		let period = 10;
+		let receiver_account = 1;
 
-		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider), ());
 		assert_ok!(
-			ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+0, period, receiver_account, fee),
+			ServiceSubscriptionModule::register_service_provider(
+				Origin::signed(1),
+				service_provider
+			),
 			()
 		);
 		assert_ok!(
-			ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee),
+			ServiceSubscriptionModule::register_service(
+				Origin::signed(1),
+				service_provider,
+				service + 0,
+				period,
+				receiver_account,
+				fee
+			),
+			()
+		);
+		assert_ok!(
+			ServiceSubscriptionModule::register_service(
+				Origin::signed(1),
+				service_provider,
+				service + 1,
+				period,
+				receiver_account,
+				fee
+			),
 			()
 		);
 	});
@@ -71,31 +92,56 @@ fn register_two_services() {
 #[test]
 fn fail_to_register_three_services() {
 	new_test_ext().execute_with(|| {
+		let service_provider = 42;
+		let service = 1;
+		let fee = 99;
+		let period = 10;
+		let receiver_account = 1;
 
-        let service_provider = 42;
-        let service = 1;
-        let fee = 99;
-        let period = 10;
-        let receiver_account = 1;
-
-		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider), ());
 		assert_ok!(
-			ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+0, period, receiver_account, fee),
+			ServiceSubscriptionModule::register_service_provider(
+				Origin::signed(1),
+				service_provider
+			),
 			()
 		);
 		assert_ok!(
-			ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee),
+			ServiceSubscriptionModule::register_service(
+				Origin::signed(1),
+				service_provider,
+				service + 0,
+				period,
+				receiver_account,
+				fee
+			),
+			()
+		);
+		assert_ok!(
+			ServiceSubscriptionModule::register_service(
+				Origin::signed(1),
+				service_provider,
+				service + 1,
+				period,
+				receiver_account,
+				fee
+			),
 			()
 		);
 
 		//max 2 services per service provider, this shall fail:
 		assert_noop!(
-			ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+2, period, receiver_account, fee),
+			ServiceSubscriptionModule::register_service(
+				Origin::signed(1),
+				service_provider,
+				service + 2,
+				period,
+				receiver_account,
+				fee
+			),
 			Error::<Test>::CannotRegisterService
 		);
 	});
 }
-
 
 #[test]
 fn user_can_subscribe() {
@@ -106,15 +152,18 @@ fn user_can_subscribe() {
         let fee = 99;
         let period = 10;
         let receiver_account = 1;
+        let now = 10;
 
-        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,2*99);
+
+        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(now);
 
 		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
 		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
 		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee);
 
         assert_ok!(
-            ServiceSubscriptionModule::subscribe(Origin::signed(1), service_provider, service),
+            ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
             ()
         );
         assert_ok!(
@@ -122,7 +171,7 @@ fn user_can_subscribe() {
             ()
         );
 
-        let vb : UserSubscriptionsVec = bounded_vec![10];
+        let vb : UserSubscriptionsVec = bounded_vec![now+period];
         assert_eq!(pallet_service_subscription::pallet::UserSubscriptions::<Test>::get(2), vb);
 	});
 }
@@ -139,20 +188,22 @@ fn user_exceeds_subscriptions_count() {
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+1);
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+2);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service+1, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+2, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+2, service+1, period, receiver_account, fee);
+        Balances::make_free_balance_be(&2,4*99);
 
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service);
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service+1);
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service);
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service+1);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+1));
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+2));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service+1, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+2, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+2, service+1, period, receiver_account, fee));
+
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service));
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service+1));
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service));
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service+1));
 
 		assert_noop!(
 		    ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+2, service+1),
@@ -174,16 +225,17 @@ fn user_already_subscribed_same_block() {
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
+        Balances::make_free_balance_be(&2,99);
 
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service));
 
 		assert_noop!(
 		    ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
             Error::<Test>::UserAlreadySubscribed
         );
-
 	});
 }
 
@@ -199,10 +251,12 @@ fn user_already_subscribed_next_block() {
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
+        Balances::make_free_balance_be(&2,99);
 
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service));
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(11);
 		assert_noop!(
@@ -224,9 +278,9 @@ fn register_service_to_unknown_service_provider() {
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee));
 
         assert_noop!(
 		    ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service, period, receiver_account, fee),
@@ -246,10 +300,10 @@ fn user_subscribes_to_unknown_service_fails() {
         let receiver_account = 1;
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,99);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
 
         assert_ok!(
             ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
@@ -263,7 +317,6 @@ fn user_subscribes_to_unknown_service_fails() {
 	});
 }
 
-
 #[test]
 fn user_subscribes_to_unknown_service_provider_fails() {
 	new_test_ext().execute_with(|| {
@@ -275,10 +328,10 @@ fn user_subscribes_to_unknown_service_provider_fails() {
         let receiver_account = 1;
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,99);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
 
         assert_ok!(
             ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
@@ -303,29 +356,30 @@ fn user_subscribes_and_cancels() {
         let receiver_account = 1;
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,4*99);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+1);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+1));
 
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service+1, period, receiver_account, fee);
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider+1, service+1, period, receiver_account, fee));
 
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service);
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service));
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(11);
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service+1);
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service+1));
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(12);
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service);
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service));
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(13);
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service+1);
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider+1, service+1));
 
 		assert_ok!(
             ServiceSubscriptionModule::cancel(Origin::signed(2), service_provider+1, service+1),
             ()
         );
 
-        let vb : UserSubscriptionsVec = bounded_vec![10,11,12];
+        let vb : UserSubscriptionsVec = bounded_vec![20,21,22];
         assert_eq!(pallet_service_subscription::pallet::UserSubscriptions::<Test>::get(2), vb);
 
 	});
@@ -342,12 +396,13 @@ fn cancel_to_unsubscribed_fails() {
         let receiver_account = 1;
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,99);
 
-		ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee);
-		ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee);
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service+1, period, receiver_account, fee));
 
-		ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service);
+		assert_ok!(ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service));
 
 		assert_noop!(
             ServiceSubscriptionModule::cancel(Origin::signed(2), service_provider, service+1),
