@@ -188,7 +188,7 @@ fn user_exceeds_subscriptions_count() {
 
         <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
 
-        Balances::make_free_balance_be(&2,4*99);
+        Balances::make_free_balance_be(&2,5*99);
 
 		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
 		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider+1));
@@ -407,6 +407,30 @@ fn cancel_to_unsubscribed_fails() {
 		assert_noop!(
             ServiceSubscriptionModule::cancel(Origin::signed(2), service_provider, service+1),
             Error::<Test>::UserNotSubscribed
+        );
+	});
+}
+
+
+#[test]
+fn subscribe_with_insufficient_funds_fails() {
+	new_test_ext().execute_with(|| {
+        let service_provider = 42;
+        let service = 1;
+        let fee = 99;
+        let period = 10;
+        let receiver_account = 1;
+
+        <ServiceSubscriptionModule as OnInitialize<<Test as system::Config>::BlockNumber>>::on_initialize(10);
+        Balances::make_free_balance_be(&2,8);
+
+		assert_ok!(ServiceSubscriptionModule::register_service_provider(Origin::signed(1), service_provider));
+		assert_ok!(ServiceSubscriptionModule::register_service(Origin::signed(1), service_provider, service, period, receiver_account, fee));
+
+		assert_noop!(
+            ServiceSubscriptionModule::subscribe(Origin::signed(2), service_provider, service),
+            // pallet_balances::Error::<Test,_>::InsufficientBalance
+            Error::<Test>::InsufficientBalance
         );
 	});
 }

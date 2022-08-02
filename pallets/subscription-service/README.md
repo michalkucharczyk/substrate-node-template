@@ -57,25 +57,25 @@ Pallet's API
 Next steps
 ~~~~~~~~~~
  - Add RPC getters to check if user is subscribed to given service
- - Service provider could be an identity.
  - Assets pallet shall be integrated.
+ - Service provider could be an identity.
  - Registering service_provider/services requires deposit.
- - Scheduler pallet may fit, this shall be evaluated
- - Implement fee-free subscribe/canel (be defensive, not to allow bad transactions to be free)
+ - Scheduler pallet may fit, this shall be evaluated.
+ - Implement fee-free subscribe/cancel (be defensive, not to allow bad transactions to be free).
 
 
 Database storage proposal
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The storage shall be organized in a way that limits number of entries to be
-checked at particular block height, so there is no need to traverse and check
+checked at particular block height, so there is no need to iterate over and check
 all the accounts.
 
-At each BHNumber, only childs of BHNumber branch are processed. If account's
-balance is high enough, then subscription fee is  transferred to service
-provider account, otherwise the account is removed from the branch.  After
+At each BHNumber, only children of BHNumber branch are processed. If account's
+balance is high enough, then subscription fee is transferred to service
+provider account, otherwise the account is removed from the branch. After
 this the branch is renamed to (BHNumber + period) what can be read as
-rescheduling next take-fee operation.
+rescheduling next take-fee operation to the end of new subscription period.
 
 
 Example:
@@ -107,19 +107,20 @@ User a00 has four subscriptions:
 - sp01,s00
 - sp02,s00
 
-They will be renewed at the following block heights:
-- @100: sp00,s00 and  sp03,s08
+User a00's subscriptions will be renewed at the following block heights:
+- @100: sp00,s00 and sp03,s08
 - @150: sp01,s00
 - @200: sp02,s00
 
 As this layout is not effective for accessing subscriptions by accound_id
 (requires traversing all block_number buckets), the cache which maps account_id
-to active block numbers is maintained.  For the picute above the cache is as
-follows:
+to active block numbers is maintained.  For the storage depicted above the
+cache would be as follows:
   a00: [100,150,200]
   a01: [100]
   a02: [120]
   a03: [120,130]
 
+This allows fast access to user's active subscriptions.
 
 

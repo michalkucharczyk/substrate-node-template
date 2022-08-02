@@ -66,6 +66,7 @@ pub mod pallet {
 		UserAlreadySubscribed,
 		CannotSubscribeUserMaxSubscriptions,
 		UserNotSubscribed,
+        InsufficientBalance, //todo: cleanup
 	}
 
 	#[pallet::pallet]
@@ -257,7 +258,8 @@ pub mod pallet {
 			ensure!(!already_subscribed, Error::<T>::UserAlreadySubscribed);
 
 			//check the balance
-			//todo
+            ensure!(T::Token::free_balance(&who) >= service_info.fee.clone().into(), Error::<T>::InsufficientBalance);
+
 
             let next_renewal = now + service_info.period.into();
 
@@ -278,9 +280,8 @@ pub mod pallet {
 				Ok(())
 			})?;
 
-			//take the fee (todo)
+			//take the fee
             T::Token::transfer(&who, &service_info.account, service_info.fee.into(), ExistenceRequirement::AllowDeath)?;
-
 
 			Ok(())
 		}
