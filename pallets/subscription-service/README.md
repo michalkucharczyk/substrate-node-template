@@ -62,6 +62,10 @@ Next steps
  - Registering service_provider/services requires deposit.
  - Scheduler pallet may fit, this shall be evaluated.
  - Implement fee-free subscribe/cancel (be defensive, not to allow bad transactions to be free).
+ - Add service removal (but keep all users till the end of the latest subscription period, requires removed marker in ServiceInfo)
+ - consider adding transactional layer, in renew_subscriptions function, error handling requires additional attention
+ - renew_subscriptions shall check if there are buckets with bn < now. If yes, it should be resolved.
+ - renew_subscriptions should terminate if cumulative weight is too high? (size of data stored?)
 
 
 Database storage proposal

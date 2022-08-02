@@ -68,7 +68,7 @@ impl pallet_service_subscription::Config for Test {
 	type ServiceProviderIdentity = u32;
 	type ServiceIdentity = u32;
 	type SubscriptionPeriod = u64;
-	type MaxServicesPerProvider = ConstU16<2>;
+	type MaxServicesPerProvider = ConstU32<2>;
 	type MaxUserSubscriptions = ConstU32<4>;
 	type Token = Balances;
 	type SubscriptionFee = u32;

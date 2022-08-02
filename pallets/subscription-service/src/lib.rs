@@ -19,8 +19,8 @@ pub mod pallet {
 	use frame_support::dispatch::Codec;
 	use frame_support::pallet_prelude::*;
 	use frame_support::traits::Currency;
+	use frame_support::traits::ExistenceRequirement;
 	use frame_support::traits::ReservableCurrency;
-    use frame_support::traits::ExistenceRequirement;
 	use frame_support::BoundedVec;
 	use frame_system::pallet_prelude::*;
 	use sp_std::vec::Vec;
@@ -39,12 +39,11 @@ pub mod pallet {
 		type ServiceIdentity: Parameter + Into<u32> + MaxEncodedLen;
 		type SubscriptionPeriod: Parameter
 			+ Into<<Self as frame_system::Config>::BlockNumber>
-			+ From<<Self as frame_system::Config>::BlockNumber>
 			+ MaxEncodedLen;
 		type SubscriptionFee: Parameter + MaxEncodedLen + Into<BalanceOf<Self>>;
 
 		#[pallet::constant]
-		type MaxServicesPerProvider: Get<u16>;
+		type MaxServicesPerProvider: Get<u32>;
 		#[pallet::constant]
 		type MaxUserSubscriptions: Get<u32>;
 	}
@@ -66,7 +65,7 @@ pub mod pallet {
 		UserAlreadySubscribed,
 		CannotSubscribeUserMaxSubscriptions,
 		UserNotSubscribed,
-        InsufficientBalance, //todo: cleanup
+		InsufficientBalance, //todo: cleanup
 	}
 
 	#[pallet::pallet]
@@ -78,7 +77,7 @@ pub mod pallet {
 	pub type CurrentBlockNumber<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
 
 	#[pallet::storage]
-	//keeps track of all service providers
+	//Keeps track of all service providers
 	pub(super) type ServiceProviders<T: Config> =
 		StorageMap<_, Blake2_128Concat, T::ServiceProviderIdentity, (), OptionQuery>;
 
@@ -92,16 +91,11 @@ pub mod pallet {
 	}
 
 	#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, MaxEncodedLen, TypeInfo)]
-	//Services subscribed by user
+	//Service subscribed by user
 	pub struct SubscriptionInfo<ServiceProviderIdentity, ServiceIdentity> {
 		pub service_provider: ServiceProviderIdentity,
 		pub service: ServiceIdentity,
 	}
-
-	// type ServicesVec<T:Config> = BoundedVec< ServiceInfo<<T as Config>::ServiceIdentity,<T as Config>::SubscriptionPeriod,<T as frame_system::Config>::AccountId, <T as Config>::SubscriptionFee>, <T as Config>::MaxServicesPerProvider>;
-	//
-	// #[pallet::storage]
-	// pub(super) type Services<T: Config> = StorageMap<_, Blake2_128Concat, T::ServiceProviderIdentity, ServicesVec<T>, OptionQuery>;
 
 	#[pallet::storage]
 	//Keeps track of all services for given service providers
@@ -141,10 +135,10 @@ pub mod pallet {
 		ValueQuery,
 	>;
 
-	// for canceling or checking if user is already subscribed this mapping allows to avoid iterating over all BlockNumbers in Subscriptions map
+	// For canceling or checking if user is already subscribed this mapping allows to avoid iterating over all BlockNumbers in Subscriptions map
 	// (can be thought of as kind of the on-chain cache)
-	// This increases the state, but limits the size of PoV (as proof is smaller).
-	// AccountId                -> [BlockNumber]
+	// This increases the state size, but limits the size of PoV (as proof is smaller).
+	// AccountId -> [BlockNumber]
 	#[pallet::storage]
 	pub(super) type UserSubscriptions<T: Config> = StorageMap<
 		_,
@@ -160,7 +154,7 @@ pub mod pallet {
 		fn on_initialize(now: T::BlockNumber) -> Weight {
 			let mut total_weight: Weight = Weight::default();
 			CurrentBlockNumber::<T>::set(now);
-            Self::renew_subscriptions(now);
+			Self::renew_subscriptions(now);
 			total_weight
 		}
 	}
@@ -178,13 +172,10 @@ pub mod pallet {
 			);
 			ServiceProviders::<T>::insert(&service_provider, ());
 
-			// ensure!(!Services::<T>::contains_key(&service_provider), Error::<T>::ServiceProviderAlreadyRegistered);
-			// Services::<T>::insert(&service_provider, ServicesVec::<T>::default());
-
 			Ok(())
 		}
 
-		//todo: ServiceInfo in function call
+		//todo: put struct ServiceInfo in function call
 		#[pallet::weight(1_000)]
 		pub fn register_service(
 			origin: OriginFor<T>,
@@ -194,38 +185,32 @@ pub mod pallet {
 			receiver_account: T::AccountId,
 			fee: T::SubscriptionFee,
 		) -> DispatchResult {
-			// ensure!(Services::<T>::contains_key(&service_provider), Error::<T>::ServiceProviderNotRegistered);
-			// Services::<T>::insert(&service_provider, ServicesVec::<T>::default());
-
 			Self::is_service_provider_registered(&service_provider)?;
 
-			println!("b:{:?}", Services2::<T>::get(&service_provider, &service));
+			// println!("b:{:?}", Services2::<T>::get(&service_provider, &service));
 
 			ensure!(
-				Services2::<T>::iter_prefix_values(&service_provider).count()
-					< T::MaxServicesPerProvider::get() as usize,
+				Services2::<T>::iter_prefix_values(&service_provider).count() < T::MaxServicesPerProvider::get() as usize,
 				Error::<T>::CannotRegisterService
 			);
 
-			Services2::<T>::try_mutate::<_, _, _, Error<T>, _>(
-				&service_provider,
-				&service,
-				|x| match x {
+			Services2::<T>::try_mutate::<_, _, _, Error<T>, _>(&service_provider, &service, |x| {
+				match x {
 					Some(_) => Err(Error::<T>::ServiceAlreadyRegistered),
 					None => {
 						*x = Some(ServiceInfo {
 							id: service.clone(),
-							period: period,
+							period,
 							account: receiver_account,
 							fee,
 						});
 						Ok(())
 					},
-				},
-			)?;
+				}
+			})?;
 
-			println!("a:{:?}", Services2::<T>::get(&service_provider, &service));
-			println!("a:{:?}", Services2::<T>::iter().collect::<Vec<_>>());
+			// println!("a:{:?}", Services2::<T>::get(&service_provider, &service));
+			// println!("a:{:?}", Services2::<T>::iter().collect::<Vec<_>>());
 
 			Ok(())
 		}
@@ -241,13 +226,14 @@ pub mod pallet {
 
 			//check if service is registered
 			Self::is_service_registered(&service_provider, &service)?;
-            let service_info = Services2::<T>::get(&service_provider, &service).expect("is_service_registered was check.qed");
+			let service_info = Services2::<T>::get(&service_provider, &service)
+				.expect("is_service_registered was check.qed");
 
 			//check if already subscribed
 			let user_renewal_blocks = UserSubscriptions::<T>::get(&who);
 
-			println!("now: {} user_renewal_blocks: {:?}", now, user_renewal_blocks);
-			println!("        subs:{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
+			// println!("now: {} user_renewal_blocks: {:?}", now, user_renewal_blocks);
+			// println!("        subs:{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
 
 			let already_subscribed = user_renewal_blocks.iter().any(|b| {
 				Subscriptions::<T>::get(&b, &who)
@@ -258,10 +244,12 @@ pub mod pallet {
 			ensure!(!already_subscribed, Error::<T>::UserAlreadySubscribed);
 
 			//check the balance
-            ensure!(T::Token::free_balance(&who) >= service_info.fee.clone().into(), Error::<T>::InsufficientBalance);
+			ensure!(
+				T::Token::free_balance(&who) >= service_info.fee.clone().into(),
+				Error::<T>::InsufficientBalance
+			);
 
-
-            let next_renewal = now + service_info.period.into();
+			let next_renewal = now + service_info.period.into();
 
 			//push new subscription to user's subscriptions
 			Subscriptions::<T>::try_mutate(&next_renewal, &who, |subs| -> DispatchResult {
@@ -281,7 +269,12 @@ pub mod pallet {
 			})?;
 
 			//take the fee
-            T::Token::transfer(&who, &service_info.account, service_info.fee.into(), ExistenceRequirement::AllowDeath)?;
+			T::Token::transfer(
+				&who,
+				&service_info.account,
+				service_info.fee.into(),
+				ExistenceRequirement::AllowDeath,
+			)?;
 
 			Ok(())
 		}
@@ -297,17 +290,15 @@ pub mod pallet {
 			//find subscription in pending BlockNumber bucket
 			let user_renewal_blocks = UserSubscriptions::<T>::get(&who);
 
-			println!("user_renewal_blocks: {:?}", user_renewal_blocks);
-			println!("subs:{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
+			// println!("user_renewal_blocks: {:?}", user_renewal_blocks);
+			// println!("subs:{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
 
 			let bucket = user_renewal_blocks.iter().enumerate().find(|(i, b)| {
-				let subs = Subscriptions::<T>::get(b, &who);
-				subs.iter()
+				Subscriptions::<T>::get(b, &who)
+					.iter()
 					.find(|sub| sub.service == service && sub.service_provider == service_provider)
 					.is_some()
 			});
-
-			println!("bucket: {:?}", bucket);
 
 			ensure!(bucket.is_some(), Error::<T>::UserNotSubscribed);
 
@@ -329,16 +320,22 @@ pub mod pallet {
 				Ok(())
 			})?;
 
-			println!("subs :{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
-			println!("block:{:?}", UserSubscriptions::<T>::iter().collect::<Vec<_>>());
+			// println!("subs :{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
+			// println!("block:{:?}", UserSubscriptions::<T>::iter().collect::<Vec<_>>());
 
 			Ok(())
 		}
 	}
 }
 
+//question: why do I need to duplicate it?
 use frame_support::ensure;
 use frame_support::pallet_prelude::DispatchResult;
+use frame_support::traits::ExistenceRequirement;
+use frame_support::BoundedVec;
+use frame_support::traits::Get;
+
+//question: is this good practice?
 impl<T: Config> Pallet<T> {
 	fn is_service_provider_registered(
 		service_provider: &T::ServiceProviderIdentity,
@@ -362,10 +359,60 @@ impl<T: Config> Pallet<T> {
 		Ok(())
 	}
 
-    fn renew_subscriptions(
-        block_number: T::BlockNumber,
-        ) -> DispatchResult {
-        Ok(())
-    }
+	fn renew_subscriptions(block_number: T::BlockNumber) -> DispatchResult {
+        //todo: we shall also checks the buckets which are less then current block_number (this should not happen theoretically).
+        //todo: error handling shall be reviewed.
+		let v = Subscriptions::<T>::iter_prefix(block_number).map(|(who,subscription_info)| who).collect::<Vec<_>>();
 
+        v.iter().for_each(|who| {
+            //remove all subscriptions for user for given block_number
+            let subscription_infos = Subscriptions::<T>::take(block_number, who);
+
+            //remove block-number from user's blocks
+			UserSubscriptions::<T>::try_mutate(&who, |b| -> Result<(),()> {
+				b.retain(|i| *i != block_number);
+				Ok(())
+			});
+
+            assert!(subscription_infos.len() < <T as Config>::MaxUserSubscriptions::get() as usize);
+            assert!(UserSubscriptions::<T>::get(&who).len() < <T as Config>::MaxUserSubscriptions::get() as usize);
+
+            //take subscription fee, and add subscription Subscriptions and new block_number to user's block_numbers
+            subscription_infos.iter().for_each(|info| {
+                let service_info = Services2::<T>::get(&info.service_provider, &info.service).expect("service cannot be removed yet. qed");
+
+                if T::Token::free_balance(&who) >= service_info.fee.clone().into() {
+
+                    //schedule renewal for the end of next period:
+                    let next_renewal = block_number + service_info.period.into();
+                    Subscriptions::<T>::try_mutate(&next_renewal, &who, |subs| -> Result<(),()> {
+                        subs.try_push(info.clone());
+                        Ok(())
+                    });
+
+                    //push 'now+service_info.period' to user's blocks
+                    UserSubscriptions::<T>::try_mutate(&who, |user_renewal_blocks| -> Result<(),()> {
+                        if !user_renewal_blocks.iter().any(|b| *b == next_renewal) {
+                            user_renewal_blocks.try_push(next_renewal);
+                        }
+                        Ok(())
+                    });
+
+                    //take the fee, todo: is it safe to discard result here?
+                    let _ = T::Token::transfer(
+                        &who,
+                        &service_info.account,
+                        service_info.fee.into(),
+                        ExistenceRequirement::AllowDeath,
+                    );
+                }
+
+            });
+        });
+
+        println!("subs :{:?}", Subscriptions::<T>::iter().collect::<Vec<_>>());
+		println!("block:{:?}", UserSubscriptions::<T>::iter().collect::<Vec<_>>());
+
+		Ok(())
+	}
 }
