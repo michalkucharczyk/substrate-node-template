@@ -7,20 +7,27 @@ The pallet was not tested in real runtime configuration on the substrate node.
 However it has basic test coverage, to run tests issue:
 `cargo test -p pallet-subscription-service`
 
-## Next steps
+## Status and next steps
 
 Provided implementation should be considered as *proof-of-concept* or *skeleton*
-for further development. There is still a lot of to improve:
-- implement meaningful events
-- Add RPC getters to check if user is subscribed to given service
-- Service provider could be an identity,
+for further development of subscription service. At this point some
+measurements shall be done (e.g. execution all renewals in on_initialize block
+should evaluated).
+
+There is still a lot of to improve:
+- Implement more meaningful events (!).
 - Registering service_provider/services requires deposit (!).
-- Assets pallet shall be integrated for payments and deposits.
+- Implement fee-free subscribe/cancel (be defensive, not to allow bad transactions to be free) (!).
+- Assets pallet shall be integrated for payments and deposits. (!)
+- Service provider could be an identity.
 - Scheduler pallet may fit, this shall be evaluated.
-- Implement fee-free subscribe/cancel (be defensive, not to allow bad transactions to be free).
-- Add service removal (but keep all users till the end of the latest subscription period, requires `pending_removal` marker field in ServiceInfo)
-- consider adding transactional layer, in renew_subscriptions function, error handling requires additional attention
-- renew_subscriptions shall check if there are buckets with `bn < now`. If yes, it should be resolved.
+- Add service removal (but keep all users till the end of the latest subscription period, requires `pending_removal` marker field in ServiceInfo).
+- consider adding transactional layer, in renew_subscriptions function, error handling requires additional attention.
+- Add RPC calls for utility functions (e.g. `get_renewal_block_for_user`, `is_service_provider_registered`)
+
+
+Some considerations related to the performance of implementing renewals in `on_initialize` block:
+- renew_subscriptions shall check if there are buckets with `bn < now`. If yes, it should be resolved. This relates to the capablity of processing all renewals in `on_initialize`
 - renew_subscriptions should terminate if cumulative weight is too high? (size of data stored?)
 
 
